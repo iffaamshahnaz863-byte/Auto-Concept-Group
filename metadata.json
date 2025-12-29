@@ -1,0 +1,8 @@
+{
+  "name": "Auto Concept Group",
+  "description": "A premium, mobile-first car buying and booking platform with AI-powered recommendations, featuring new, used, and electric vehicles.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
