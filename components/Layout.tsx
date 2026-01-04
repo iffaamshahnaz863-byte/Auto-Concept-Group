@@ -43,15 +43,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
           <>
             <button onClick={() => setActiveTab('home')} className={`relative p-3 rounded-2xl transition-all duration-500 ${activeTab === 'home' ? 'text-blue-600 bg-blue-50 scale-125' : 'text-slate-300 hover:text-slate-500'}`}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              {activeTab === 'home' && <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full"></div>}
             </button>
             <button onClick={() => setActiveTab('bookings')} className={`relative p-3 rounded-2xl transition-all duration-500 ${activeTab === 'bookings' ? 'text-blue-600 bg-blue-50 scale-125' : 'text-slate-300 hover:text-slate-500'}`}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
-              {activeTab === 'bookings' && <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full"></div>}
             </button>
             <button onClick={() => setActiveTab('profile')} className={`relative p-3 rounded-2xl transition-all duration-500 ${activeTab === 'profile' ? 'text-blue-600 bg-blue-50 scale-125' : 'text-slate-300 hover:text-slate-500'}`}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              {activeTab === 'profile' && <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full"></div>}
             </button>
           </>
         )}
@@ -60,6 +57,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
           <>
             <button onClick={() => setActiveTab('dealer-dashboard')} className={`relative p-3 rounded-2xl transition-all duration-500 ${activeTab === 'dealer-dashboard' ? 'text-blue-600 bg-blue-50 scale-125' : 'text-slate-300 hover:text-slate-500'}`}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><rect width="7" height="9" x="3" y="3" rx="1.5"/><rect width="7" height="5" x="14" y="3" rx="1.5"/><rect width="7" height="9" x="14" y="12" rx="1.5"/><rect width="7" height="5" x="3" y="16" rx="1.5"/></svg>
+            </button>
+            <button onClick={() => setActiveTab('dealer-cars')} className={`relative p-3 rounded-2xl transition-all duration-500 ${activeTab === 'dealer-cars' ? 'text-blue-600 bg-blue-50 scale-125' : 'text-slate-300 hover:text-slate-500'}`}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"/></svg>
             </button>
             <button onClick={() => setActiveTab('profile')} className={`relative p-3 rounded-2xl transition-all duration-500 ${activeTab === 'profile' ? 'text-blue-600 bg-blue-50 scale-125' : 'text-slate-300 hover:text-slate-500'}`}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -75,8 +75,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
             <button onClick={() => setActiveTab('admin-dealers')} className={`relative p-3 rounded-2xl transition-all duration-500 ${activeTab === 'admin-dealers' ? 'text-blue-600 bg-blue-50 scale-125' : 'text-slate-300 hover:text-slate-500'}`}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="19" cy="11" r="2"/></svg>
             </button>
-            <button onClick={() => setActiveTab('admin-cms')} className={`relative p-3 rounded-2xl transition-all duration-500 ${activeTab === 'admin-cms' ? 'text-blue-600 bg-blue-50 scale-125' : 'text-slate-300 hover:text-slate-500'}`}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <button onClick={() => setActiveTab('profile')} className={`relative p-3 rounded-2xl transition-all duration-500 ${activeTab === 'profile' ? 'text-blue-600 bg-blue-50 scale-125' : 'text-slate-300 hover:text-slate-500'}`}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4.5"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </button>
           </>
         )}

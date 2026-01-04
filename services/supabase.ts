@@ -6,75 +6,107 @@ const supabaseAnonKey = 'sb_publishable_adVdicyHc-5LKxJ8Gh_9ig_BPii8hNQ';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// --- Real Data Fetching Helpers ---
+/**
+ * Enhanced fetch helper to provide more descriptive error messages
+ */
+const safeFetch = async (query: any, errorMessage: string) => {
+  try {
+    const { data, error } = await query;
+    if (error) {
+      // Stringify error object to prevent [object Object] in logs
+      console.error(`${errorMessage}:`, JSON.stringify(error, null, 2));
+      throw new Error(error.message || errorMessage);
+    }
+    return data || [];
+  } catch (err: any) {
+    console.error(`Catch in ${errorMessage}:`, err.message || err);
+    throw err;
+  }
+};
 
 export const fetchAvailableCars = async () => {
-  const { data, error } = await supabase
-    .from('cars')
-    .select('*')
-    .eq('status', 'available');
-  if (error) throw error;
-  return data || [];
+  return safeFetch(
+    supabase.from('cars').select('*').eq('status', 'available'),
+    'Error fetching available cars'
+  );
 };
 
 export const fetchAllCars = async () => {
-  const { data, error } = await supabase.from('cars').select('*');
-  if (error) throw error;
-  return data || [];
+  return safeFetch(
+    supabase.from('cars').select('*'),
+    'Error fetching all cars'
+  );
+};
+
+export const fetchUserCars = async (dealerId: string) => {
+  return safeFetch(
+    supabase.from('cars').select('*').eq('dealer_id', dealerId),
+    'Error fetching dealer cars'
+  );
 };
 
 export const fetchAllUsers = async () => {
-  const { data, error } = await supabase.from('users').select('*');
-  if (error) throw error;
-  return data || [];
+  return safeFetch(
+    supabase.from('users').select('*'),
+    'Error fetching all users'
+  );
 };
 
 export const fetchAllDealers = async () => {
-  const { data, error } = await supabase.from('dealers').select('*');
-  if (error) throw error;
-  return data || [];
+  return safeFetch(
+    supabase.from('dealers').select('*'),
+    'Error fetching all dealers'
+  );
 };
 
 export const fetchUserBookings = async (userId: string) => {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select(`
-      *,
-      cars (*)
-    `)
-    .eq('user_id', userId);
-  if (error) throw error;
-  return data || [];
+  return safeFetch(
+    supabase.from('bookings').select('*, cars(*)').eq('user_id', userId).order('created_at', { ascending: false }),
+    'Error fetching user bookings'
+  );
 };
 
 export const fetchDealerBookings = async (dealerId: string) => {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select(`
-      *,
-      cars (*)
-    `)
-    .eq('dealer_id', dealerId);
-  if (error) throw error;
-  return data || [];
+  return safeFetch(
+    supabase.from('bookings')
+      .select('*, cars(*)')
+      .eq('dealer_id', dealerId)
+      .order('created_at', { ascending: false }),
+    'Error fetching dealer bookings'
+  );
 };
 
 export const fetchAllBookings = async () => {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select(`
-      *,
-      cars (*),
-      users (*)
-    `);
-  if (error) throw error;
-  return data || [];
+  return safeFetch(
+    supabase.from('bookings').select('*, cars(*), users(*)').order('created_at', { ascending: false }),
+    'Error fetching all bookings'
+  );
+};
+
+export const fetchBookingInvoices = async (bookingId: string) => {
+  return safeFetch(
+    supabase.from('invoices').select('*').eq('booking_id', bookingId),
+    'Error fetching invoices'
+  );
+};
+
+export const fetchAllInvoices = async () => {
+  return safeFetch(
+    supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+    'Error fetching all invoices'
+  );
+};
+
+export const recordPayment = async (paymentData: any) => {
+  const { data, error } = await supabase.from('payments').insert([paymentData]);
+  if (error) throw new Error(error.message);
+  return data;
 };
 
 export const createBookingRecord = async (bookingData: any) => {
-  const { data, error } = await supabase.from('bookings').insert([bookingData]);
-  if (error) throw error;
-  return data;
+  const { data, error } = await supabase.from('bookings').insert([bookingData]).select();
+  if (error) throw new Error(error.message);
+  return data ? data[0] : null;
 };
 
 export const registerDealerInDb = async (dealerData: {
@@ -98,6 +130,30 @@ export const registerDealerInDb = async (dealerData: {
       created_at: new Date().toISOString()
     }
   ]);
-  if (error) throw error;
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const addCarListing = async (carData: any) => {
+  const { data, error } = await supabase.from('cars').insert([carData]);
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const updateCarDetails = async (carId: string, dealerId: string, carData: any) => {
+  const { data, error } = await supabase
+    .from('cars')
+    .update(carData)
+    .match({ id: carId, dealer_id: dealerId });
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const updateCarStatus = async (carId: string, status: string) => {
+  const { data, error } = await supabase
+    .from('cars')
+    .update({ status })
+    .eq('id', carId);
+  if (error) throw new Error(error.message);
   return data;
 };

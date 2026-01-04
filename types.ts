@@ -53,7 +53,7 @@ export interface Car {
   owner?: number;
   location: string;
   dealer_id?: string;
-  status: 'available' | 'sold' | 'pending';
+  status: 'available' | 'sold' | 'booked' | 'pending';
 }
 
 export interface Booking {
@@ -62,10 +62,32 @@ export interface Booking {
   user_id: string;
   dealer_id: string;
   status: BookingStatus | string;
-  booking_date: string;
+  created_at: string;
   token_paid: number;
   cars?: Car;
   users?: UserProfile;
+}
+
+export interface Payment {
+  id: string;
+  payment_id: string;
+  order_id?: string;
+  amount: number;
+  currency: string;
+  status: 'success' | 'failed';
+  user_id: string;
+  dealer_id: string;
+  car_id: string;
+  created_at: string;
+}
+
+export interface Invoice {
+  id: string;
+  invoice_number: string;
+  booking_id: string;
+  payment_id: string;
+  invoice_url?: string;
+  created_at: string;
 }
 
 export interface UserProfile {
