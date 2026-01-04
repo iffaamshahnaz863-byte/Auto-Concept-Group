@@ -57,28 +57,24 @@ const App: React.FC = () => {
     location: ''
   });
 
-  // Security
+  // Security & Forced Transitions
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [newPassword, setNewPassword] = useState('');
 
-  // Initial Splash Logic
+  // Initial Boot Sequence
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 2500);
+    const timer = setTimeout(() => setShowSplash(false), 3000);
     return () => clearTimeout(timer);
   }, []);
 
-  // AUTOMATIC ROLE DETECTION
+  // ROLE AUTO-DETECTION SYSTEM
   const detectUserRole = async (email: string, id: string): Promise<UserProfile | null> => {
     try {
-      // 1. Check Admin (email exists in admins table)
+      // 1. Check Admin Hierarchy
       const { data: admin } = await supabase.from('admins').select('*').eq('email', email).maybeSingle();
-      if (admin) {
-        return { id, name: admin.name || 'Admin', email, phone: '', role: UserRole.ADMIN };
-      }
+      if (admin) return { id, name: admin.name || 'Master Admin', email, phone: '', role: UserRole.ADMIN };
 
-      // 2. Check Dealer (email exists in dealers table)
+      // 2. Check Dealer Authorization
       const { data: dealer } = await supabase.from('dealers').select('*').eq('email', email).maybeSingle();
       if (dealer) {
         if (!dealer.is_approved) {
@@ -89,7 +85,7 @@ const App: React.FC = () => {
         }
         return { 
           id, 
-          name: dealer.name || 'Dealer', 
+          name: dealer.name || 'Partner Dealer', 
           email, 
           phone: dealer.phone || '', 
           role: UserRole.DEALER, 
@@ -98,11 +94,11 @@ const App: React.FC = () => {
         };
       }
 
-      // 3. Fallback to User
+      // 3. Consumer Node Detection
       const { data: user } = await supabase.from('users').select('*').eq('id', id).maybeSingle();
       return { 
         id, 
-        name: user?.full_name || 'Member', 
+        name: user?.full_name || 'Valued Member', 
         email, 
         phone: user?.phone || '', 
         role: UserRole.USER 
@@ -142,12 +138,13 @@ const App: React.FC = () => {
         setBookings(ub);
       }
     } catch (err) {
-      console.error("Critical Load Error", err);
+      console.error("Data Load Sequence Interrupted", err);
     } finally {
       setIsLoadingData(false);
     }
   };
 
+  // HANDLERS
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthLoading(true);
@@ -162,7 +159,7 @@ const App: React.FC = () => {
         if (error.message.toLowerCase().includes("email not confirmed")) {
           throw new Error("Email not confirmed. Please contact admin.");
         }
-        throw new Error("Invalid email or password");
+        throw new Error("Invalid email or password.");
       }
 
       if (data.user) {
@@ -170,12 +167,11 @@ const App: React.FC = () => {
         if (profile) {
           setCurrentUser(profile);
           await loadDataByRole(profile);
-          const initialTab = profile.role === UserRole.USER ? 'home' : (profile.role === UserRole.DEALER ? 'dealer-dashboard' : 'admin-stats');
-          setActiveTab(initialTab);
+          const targetTab = profile.role === UserRole.USER ? 'home' : (profile.role === UserRole.DEALER ? 'dealer-dashboard' : 'admin-stats');
+          setActiveTab(targetTab);
         }
       }
     } catch (err: any) {
-      // RED ALERT SYSTEM
       setAuthError(err.message || "Something went wrong. Please try again.");
       await supabase.auth.signOut();
     } finally {
@@ -193,23 +189,16 @@ const App: React.FC = () => {
         password: loginPassword,
         options: { data: { full_name: signupName } }
       });
-
       if (error) throw error;
-
       if (data.user) {
-        await supabase.from('users').insert([{ 
-          id: data.user.id, 
-          full_name: signupName, 
-          email: loginEmail.trim(),
-          status: 'active'
-        }]);
+        await supabase.from('users').insert([{ id: data.user.id, full_name: signupName, email: loginEmail.trim(), status: 'active' }]);
         const profile: UserProfile = { id: data.user.id, name: signupName, email: loginEmail.trim(), phone: '', role: UserRole.USER };
         setCurrentUser(profile);
         await loadDataByRole(profile);
         setActiveTab('home');
       }
     } catch (err: any) {
-      setAuthError(err.message || "Signup failed. Ensure credentials are valid.");
+      setAuthError(err.message || "Signup sequence failed.");
     } finally {
       setIsAuthLoading(false);
     }
@@ -234,10 +223,10 @@ const App: React.FC = () => {
       if (currentUser) {
         await supabase.from('dealers').update({ needs_password_change: false }).eq('id', currentUser.id);
       }
-      alert("Password updated successfully. Accessing your dashboard.");
+      alert("Credential update successful. Loading dashboard...");
       setShowPasswordChange(false);
     } catch (err: any) {
-      alert("Security update failed: " + err.message);
+      alert("Update restricted: " + err.message);
     } finally {
       setIsAuthLoading(false);
     }
@@ -246,46 +235,27 @@ const App: React.FC = () => {
   const handleAddDealer = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthLoading(true);
-    
-    // 1. Trim and Validate Email
     const trimmedEmail = dealerForm.email.trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
     if (!emailRegex.test(trimmedEmail)) {
-      alert("Invalid email format. Please check the address.");
+      alert("Invalid email format detected.");
       setIsAuthLoading(false);
       return;
     }
 
-    // 2. Auto-generate Temporary Password
     const tempPassword = `Dealer@${Math.floor(1000 + Math.random() * 9000)}`;
-
     try {
-      // 3. Create Dealer in Supabase Auth
-      // Note: For auto-confirmation to work immediately via signUp, 
-      // the project settings in Supabase must have "Confirm Email" disabled 
-      // or this should be handled by an Edge Function with Service Role.
-      // We implement signUp and assume project configuration allows immediate login for admin-initiated flows.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: trimmedEmail,
         password: tempPassword,
         options: { data: { full_name: dealerForm.owner_name } }
       });
-
       if (authError) throw authError;
-
       if (authData.user) {
-        // 4. Register in Dealers Table in Public Schema
-        await registerDealerInDb({ 
-          ...dealerForm, 
-          email: trimmedEmail,
-          id: authData.user.id 
-        });
-        
-        // 5. Success UI: Show temporary password to Admin immediately
+        await registerDealerInDb({ ...dealerForm, email: trimmedEmail, id: authData.user.id });
         setLastCreatedDealer({ email: trimmedEmail, password: tempPassword });
         setDealerForm({ name: '', owner_name: '', email: '', phone: '', location: '' });
-        
-        // Refresh local dealer list for Admin Dashboard
         const dealers = await fetchAllDealers();
         setAllDealers(dealers);
       }
@@ -298,98 +268,85 @@ const App: React.FC = () => {
 
   const handleBookNow = async (carId: string) => {
     if (!currentUser) {
-      alert("Please login to proceed with booking.");
       setAuthMode('login');
       return;
     }
-
     const car = cars.find(c => c.id === carId);
     if (!car) return;
-
     setIsLoadingData(true);
     try {
-      const bookingData = {
+      await createBookingRecord({
         car_id: carId,
         user_id: currentUser.id,
         dealer_id: car.dealer_id,
         status: 'Confirmed',
         booking_date: new Date().toISOString(),
         token_paid: 25000
-      };
-
-      await createBookingRecord(bookingData);
+      });
       const ub = await fetchUserBookings(currentUser.id);
       setBookings(ub);
-      
-      alert(`Success! Booking request for ${car.name} initialized.`);
+      alert(`Asset reservation confirmed for ${car.name}.`);
       setSelectedCarId(null);
       setActiveTab('bookings');
     } catch (err: any) {
-      alert("Booking error: " + err.message);
+      alert("Reservation system offline: " + err.message);
     } finally {
       setIsLoadingData(false);
     }
   };
 
+  // UI RENDERERS
   const renderAuth = () => (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 relative">
-      <div className="absolute inset-0 opacity-5 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] pointer-events-none"></div>
-
-      <div className="w-full max-w-sm space-y-8 z-10 py-10 animate-slide-up">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 rotate-12 shadow-2xl border border-white/20">
-            <span className="text-white font-black italic text-3xl">AC</span>
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+      <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600 opacity-50"></div>
+      
+      <div className="w-full max-w-sm space-y-10 z-10 animate-slide-up">
+        <div className="text-center space-y-4">
+          <div className="w-24 h-24 bg-blue-600 rounded-[32px] flex items-center justify-center mx-auto rotate-12 shadow-2xl border border-white/20 shadow-blue-600/40">
+            <span className="text-white font-black italic text-4xl -rotate-12">AC</span>
           </div>
-          <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase">Auto Concept</h1>
-          <p className="text-blue-400 text-[10px] font-black uppercase tracking-[0.5em] mt-3">Elite Node Network</p>
+          <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">Auto Concept</h1>
+          <p className="text-blue-500 text-[10px] font-black uppercase tracking-[0.5em]">Security Terminal v2.5</p>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-2xl p-8 rounded-[40px] border border-white/10 space-y-6 shadow-2xl">
+        <div className="bg-white/10 backdrop-blur-3xl p-8 rounded-[48px] border border-white/10 space-y-8 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)]">
           <div className="text-center">
-            <h2 className="text-white font-black text-2xl italic tracking-tight">
-              {authMode === 'login' ? 'Authentication' : 'Registration'}
+            <h2 className="text-white font-black text-2xl italic tracking-tight uppercase">
+              {authMode === 'login' ? 'Authentication' : 'Enrollment'}
             </h2>
           </div>
 
-          {/* RED ALERT FOR LOGIN ERRORS */}
           {authError && (
-            <div className="bg-red-500/20 border border-red-500/50 p-4 rounded-2xl flex items-center gap-3 animate-pulse">
-               <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-               <p className="text-red-400 text-xs font-bold leading-tight uppercase tracking-wider">{authError}</p>
+            <div className="bg-red-500/20 border border-red-500/40 p-5 rounded-3xl flex items-center gap-4 animate-in fade-in zoom-in duration-300">
+               <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_12px_rgba(239,44,44,1)]"></div>
+               <p className="text-red-400 text-xs font-black leading-tight uppercase tracking-wider">{authError}</p>
             </div>
           )}
 
-          <form onSubmit={authMode === 'login' ? handleLogin : handleSignup} className="space-y-4">
+          <form onSubmit={authMode === 'login' ? handleLogin : handleSignup} className="space-y-5">
             {authMode === 'signup' && (
-              <input 
-                type="text" required value={signupName} onChange={e => setSignupName(e.target.value)} 
-                placeholder="Full Name" 
-                className="w-full bg-slate-800/50 border border-slate-700/50 rounded-2xl px-6 py-4 text-white text-sm focus:ring-2 focus:ring-blue-600 outline-none" 
-              />
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase ml-4 tracking-widest">Full Name</label>
+                <input type="text" required value={signupName} onChange={e => setSignupName(e.target.value)} placeholder="Member Name" className="w-full bg-slate-800/60 border border-white/10 rounded-3xl px-7 py-5 text-white text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-600" />
+              </div>
             )}
-            <input 
-              type="email" required value={loginEmail} onChange={e => setLoginEmail(e.target.value)} 
-              placeholder="Email Address" 
-              className="w-full bg-slate-800/50 border border-slate-700/50 rounded-2xl px-6 py-4 text-white text-sm focus:ring-2 focus:ring-blue-600 outline-none" 
-            />
-            <input 
-              type="password" required value={loginPassword} onChange={e => setLoginPassword(e.target.value)} 
-              placeholder="Password" 
-              className="w-full bg-slate-800/50 border border-slate-700/50 rounded-2xl px-6 py-4 text-white text-sm focus:ring-2 focus:ring-blue-600 outline-none" 
-            />
-            <button 
-              type="submit" disabled={isAuthLoading} 
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-[24px] shadow-2xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest active:scale-95"
-            >
-              {isAuthLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : (authMode === 'login' ? 'Authorize' : 'Join Node')}
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-500 uppercase ml-4 tracking-widest">Email Node</label>
+              <input type="email" required value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="name@domain.com" className="w-full bg-slate-800/60 border border-white/10 rounded-3xl px-7 py-5 text-white text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-600" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-500 uppercase ml-4 tracking-widest">Access Key</label>
+              <input type="password" required value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/60 border border-white/10 rounded-3xl px-7 py-5 text-white text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-600" />
+            </div>
+            
+            <button type="submit" disabled={isAuthLoading} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-[32px] shadow-[0_20px_40px_-10px_rgba(37,99,235,0.4)] transition-all flex items-center justify-center gap-3 text-sm uppercase tracking-[0.2em] active:scale-95 disabled:opacity-50">
+              {isAuthLoading ? <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin"></div> : (authMode === 'login' ? 'Initialize' : 'Register')}
             </button>
           </form>
 
-          <button 
-            onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(null); }} 
-            className="w-full text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-blue-500 transition-colors"
-          >
-            {authMode === 'login' ? "New Member? Create Node" : "Member? Login Instead"}
+          <button onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(null); }} className="w-full text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] hover:text-blue-500 transition-colors">
+            {authMode === 'login' ? "New Member? Join Node" : "Existing Member? Authenticate"}
           </button>
         </div>
       </div>
@@ -397,58 +354,49 @@ const App: React.FC = () => {
   );
 
   const renderHome = () => (
-    <div className="p-4 space-y-6">
-      <div className="flex justify-between items-center px-2">
-        <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Discovery Engine</h2>
+    <div className="p-6 space-y-8 animate-in fade-in duration-500">
+      <div className="flex justify-between items-center">
+        <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Discovery Protocol</h2>
         <LanguageToggle currentLang={language} onToggle={setLanguage} />
       </div>
 
-      <div className="bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl relative overflow-hidden group">
-        <div className="relative z-10">
-          <h3 className="text-2xl font-black italic tracking-tighter mb-4">Auto Advisor AI</h3>
-          <div className="flex gap-2">
-            <input 
-              value={searchQuery} onChange={e => setSearchQuery(e.target.value)} 
-              placeholder="Describe your ideal drive..." 
-              className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none" 
-            />
-            <button 
-              onClick={async () => {
-                setIsAiLoading(true);
-                const sug = await getCarRecommendation(searchQuery);
-                setAiSuggestion(sug);
-                setIsAiLoading(false);
-              }} 
-              className="bg-blue-600 text-white px-6 rounded-2xl font-black text-xs uppercase active:scale-95 transition-transform"
-            >
-              {isAiLoading ? '...' : 'ASK'}
+      <div className="bg-slate-900 rounded-[48px] p-10 text-white shadow-2xl relative overflow-hidden group border border-white/5">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-transparent"></div>
+        <div className="relative z-10 space-y-6">
+          <div className="flex items-center gap-4">
+             <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/30">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+             </div>
+             <h3 className="text-3xl font-black italic tracking-tighter uppercase leading-none">Auto Advisor</h3>
+          </div>
+          <div className="flex gap-3">
+            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Describe your dream drive..." className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-600" />
+            <button onClick={async () => { setIsAiLoading(true); setAiSuggestion(await getCarRecommendation(searchQuery)); setIsAiLoading(false); }} className="bg-blue-600 text-white px-8 rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 shadow-xl shadow-blue-600/20">
+              {isAiLoading ? '...' : 'ANALYZ'}
             </button>
           </div>
           {aiSuggestion && (
-            <div className="mt-6 p-6 bg-white/5 backdrop-blur-md rounded-3xl border border-white/10 text-xs animate-slide-up">
-              <span className="font-black text-blue-500 uppercase tracking-widest text-[10px]">{aiSuggestion.suggestedCategory}</span>
-              <p className="mt-2 opacity-90 leading-relaxed text-slate-300">{aiSuggestion.reasoning}</p>
+            <div className="mt-6 p-8 bg-white/5 backdrop-blur-xl rounded-[32px] border border-white/10 text-xs animate-slide-up">
+              <span className="font-black text-blue-500 uppercase tracking-[0.3em] text-[9px]">{aiSuggestion.suggestedCategory}</span>
+              <p className="mt-3 opacity-90 leading-relaxed text-slate-300 font-medium text-[13px]">{aiSuggestion.reasoning}</p>
             </div>
           )}
         </div>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto no-scrollbar py-2">
+      <div className="flex gap-4 overflow-x-auto no-scrollbar py-2 -mx-2 px-2">
         {CATEGORIES.map(cat => (
-          <button 
-            key={cat} onClick={() => setActiveCategory(cat as any)} 
-            className={`px-8 py-4 rounded-[20px] text-[10px] font-black border uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === cat ? 'bg-blue-600 border-blue-600 text-white shadow-xl scale-105' : 'bg-white border-slate-100 text-slate-400'}`}
-          >
+          <button key={cat} onClick={() => setActiveCategory(cat as any)} className={`px-10 py-5 rounded-[24px] text-[10px] font-black border uppercase tracking-[0.2em] transition-all whitespace-nowrap ${activeCategory === cat ? 'bg-blue-600 border-blue-600 text-white shadow-2xl shadow-blue-600/30 scale-105' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}>
             {cat}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-8 px-2 pb-10">
+      <div className="grid grid-cols-1 gap-10 pb-32">
         {isLoadingData ? (
-          <div className="py-20 flex flex-col items-center gap-4">
-             <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Accessing Fleet</p>
+          <div className="py-24 flex flex-col items-center gap-6 opacity-40">
+             <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+             <p className="text-[10px] font-black text-slate-900 uppercase tracking-[0.5em]">Syncing Master Fleet</p>
           </div>
         ) : (
           cars.filter(c => c.category === activeCategory).map(car => (
@@ -460,109 +408,115 @@ const App: React.FC = () => {
   );
 
   const renderAdminStats = () => (
-    <div className="p-6 space-y-8 pb-32">
+    <div className="p-8 space-y-10 pb-32">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-black italic tracking-tighter">Global Hub Metrics</h2>
-        <div className="bg-green-100 text-green-600 text-[10px] font-black px-3 py-1 rounded-full animate-pulse border border-green-200 uppercase">System Ready</div>
+        <h2 className="text-4xl font-black italic tracking-tighter uppercase text-slate-900">Hub Metrics</h2>
+        <div className="bg-green-100 text-green-600 text-[9px] font-black px-4 py-2 rounded-full border border-green-200 uppercase tracking-widest flex items-center gap-2">
+           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+           ACTIVE
+        </div>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-5">
         {[
-          { l: 'Members', v: allUsers.length, c: 'text-blue-600' },
-          { l: 'Network Nodes', v: allDealers.length, c: 'text-slate-900' },
-          { l: 'Asset Orders', v: bookings.length, c: 'text-indigo-600' }
+          { l: 'Members', v: allUsers.length, c: 'text-blue-600', bg: 'bg-blue-50' },
+          { l: 'Nodes', v: allDealers.length, c: 'text-slate-900', bg: 'bg-slate-50' },
+          { l: 'Orders', v: bookings.length, c: 'text-indigo-600', bg: 'bg-indigo-50' }
         ].map(s => (
-          <div key={s.l} className="bg-white border border-slate-100 p-6 rounded-[30px] text-center shadow-xl hover:scale-105 transition-transform">
-            <p className="text-[8px] font-black text-slate-400 uppercase mb-2 tracking-widest">{s.l}</p>
-            <p className={`text-xl font-black ${s.c}`}>{s.v}</p>
+          <div key={s.l} className={`${s.bg} border border-slate-100 p-8 rounded-[40px] text-center shadow-xl hover:translate-y-[-4px] transition-all`}>
+            <p className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest leading-none">{s.l}</p>
+            <p className={`text-2xl font-black ${s.c} leading-none tracking-tighter italic`}>{s.v}</p>
           </div>
         ))}
+      </div>
+      <div className="bg-slate-900 p-10 rounded-[56px] text-white space-y-8 shadow-2xl relative overflow-hidden">
+         <div className="absolute top-0 right-0 p-10 opacity-5"><svg width="120" height="120" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"/></svg></div>
+         <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-[0.5em]">Real-time Transaction Log</h3>
+         <div className="space-y-4">
+            {bookings.slice(0,4).map(b => (
+              <div key={b.id} className="flex justify-between items-center text-[10px] border-b border-white/5 pb-4 last:border-0 last:pb-0">
+                <span className="text-slate-400 font-bold tracking-widest">{b.id.slice(0,12)}</span>
+                <span className="text-blue-400 font-black uppercase tracking-[0.2em]">{b.status}</span>
+              </div>
+            ))}
+         </div>
       </div>
     </div>
   );
 
   const renderAdminDealers = () => (
-    <div className="p-6 space-y-6 pb-32">
+    <div className="p-8 space-y-8 pb-32">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-black italic tracking-tighter">Network Node Mgmt</h2>
-        <button 
-          onClick={() => { setLastCreatedDealer(null); setShowAddDealerModal(true); }} 
-          className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl active:scale-95 transition-all"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 5v14M5 12h14"/></svg>
+        <h2 className="text-4xl font-black italic tracking-tighter uppercase text-slate-900">Node Network</h2>
+        <button onClick={() => { setLastCreatedDealer(null); setShowAddDealerModal(true); }} className="bg-blue-600 text-white p-5 rounded-3xl shadow-2xl shadow-blue-600/30 active:scale-95 transition-all">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
       </div>
-      <div className="space-y-4">
+      <div className="space-y-5">
         {allDealers.map(d => (
-          <div key={d.id} className="bg-white border border-slate-100 p-6 rounded-[32px] shadow-lg flex justify-between items-center">
-            <div className="flex items-center gap-4">
-               <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center font-black text-slate-400 uppercase text-[10px]">{d.name.slice(0,2)}</div>
-               <div>
-                 <p className="text-sm font-black text-slate-900 leading-tight">{d.name}</p>
-                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{d.location} • {d.owner_name}</p>
+          <div key={d.id} className="bg-white border border-slate-100 p-8 rounded-[40px] shadow-xl flex justify-between items-center group hover:border-blue-200 transition-colors">
+            <div className="flex items-center gap-6">
+               <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center font-black text-slate-400 uppercase text-xs group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">{d.name.slice(0,2)}</div>
+               <div className="space-y-1">
+                 <p className="text-lg font-black text-slate-900 leading-none italic">{d.name}</p>
+                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{d.location} • {d.owner_name}</p>
                </div>
             </div>
-            <div className={`w-3 h-3 rounded-full ${d.is_approved ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,44,44,0.6)]'}`} />
+            <div className={`w-4 h-4 rounded-full ${d.is_approved ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.8)]' : 'bg-red-500 shadow-[0_0_15px_rgba(239,44,44,0.8)]'}`} />
           </div>
         ))}
       </div>
 
       {showAddDealerModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-6 animate-slide-up">
-          <div className="w-full max-w-sm bg-white p-8 rounded-[40px] shadow-2xl space-y-6 overflow-y-auto max-h-[90vh]">
+        <div className="fixed inset-0 z-[100] bg-slate-900/98 backdrop-blur-2xl flex items-center justify-center p-6 animate-slide-up">
+          <div className="w-full max-w-sm bg-white p-10 rounded-[56px] shadow-3xl space-y-8 overflow-y-auto max-h-[90vh]">
             {!lastCreatedDealer ? (
               <>
-                <div className="text-center">
-                  <h3 className="text-2xl font-black italic">Enroll New Node</h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Authorized Dealer Node</p>
+                <div className="text-center space-y-3">
+                  <h3 className="text-3xl font-black italic uppercase tracking-tighter">Enroll Node</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.4em]">Dealer Master Onboarding</p>
                 </div>
-                <form onSubmit={handleAddDealer} className="space-y-4">
-                  <input type="text" required placeholder="Showroom Name" value={dealerForm.name} onChange={e => setDealerForm({...dealerForm, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
-                  <input type="text" required placeholder="Owner Name" value={dealerForm.owner_name} onChange={e => setDealerForm({...dealerForm, owner_name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
-                  <input type="email" required placeholder="Node Email (Login ID)" value={dealerForm.email} onChange={e => setDealerForm({...dealerForm, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
-                  <input type="text" required placeholder="Phone Number" value={dealerForm.phone} onChange={e => setDealerForm({...dealerForm, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
-                  <input type="text" required placeholder="Location / HQ" value={dealerForm.location} onChange={e => setDealerForm({...dealerForm, location: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
+                <form onSubmit={handleAddDealer} className="space-y-5">
+                  <input type="text" required placeholder="Showroom Name" value={dealerForm.name} onChange={e => setDealerForm({...dealerForm, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-3xl px-8 py-5 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
+                  <input type="text" required placeholder="Owner Name" value={dealerForm.owner_name} onChange={e => setDealerForm({...dealerForm, owner_name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-3xl px-8 py-5 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
+                  <input type="email" required placeholder="Authorized Email Node" value={dealerForm.email} onChange={e => setDealerForm({...dealerForm, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-3xl px-8 py-5 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
+                  <input type="text" required placeholder="Mobile Uplink" value={dealerForm.phone} onChange={e => setDealerForm({...dealerForm, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-3xl px-8 py-5 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
+                  <input type="text" required placeholder="Regional HQ / Location" value={dealerForm.location} onChange={e => setDealerForm({...dealerForm, location: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-3xl px-8 py-5 text-sm outline-none focus:ring-2 focus:ring-blue-600" />
                   
-                  <div className="flex gap-3 pt-2">
-                    <button type="button" onClick={() => setShowAddDealerModal(false)} className="flex-1 bg-slate-100 text-slate-500 font-black py-4 rounded-[20px] uppercase text-[10px] tracking-widest">Abort</button>
-                    <button type="submit" disabled={isAuthLoading} className="flex-[2] bg-blue-600 text-white font-black py-4 rounded-[20px] shadow-xl uppercase text-[10px] tracking-widest">
-                      {isAuthLoading ? 'Enrolling...' : 'Enroll Node'}
+                  <div className="flex gap-4 pt-4">
+                    <button type="button" onClick={() => setShowAddDealerModal(false)} className="flex-1 bg-slate-100 text-slate-500 font-black py-5 rounded-[28px] uppercase text-[10px] tracking-widest">Abort</button>
+                    <button type="submit" disabled={isAuthLoading} className="flex-[2] bg-blue-600 text-white font-black py-5 rounded-[28px] shadow-2xl shadow-blue-600/20 uppercase text-[10px] tracking-widest active:scale-95 transition-all">
+                      {isAuthLoading ? 'Initializing...' : 'Authorize Node'}
                     </button>
                   </div>
                 </form>
               </>
             ) : (
-              <div className="text-center space-y-8 py-6">
-                <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6 9 17l-5-5"/></svg>
+              <div className="text-center space-y-10 py-4 animate-in zoom-in duration-500">
+                <div className="w-24 h-24 bg-green-100 text-green-600 rounded-[36px] flex items-center justify-center mx-auto shadow-inner border border-green-200">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5"><path d="M20 6 9 17l-5-5"/></svg>
                 </div>
-                <div className="space-y-2">
-                  <h3 className="text-3xl font-black italic text-slate-900">Enrolled!</h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Dealer Node Access Ready</p>
+                <div className="space-y-3">
+                  <h3 className="text-4xl font-black italic uppercase tracking-tighter">Authorized!</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.4em]">Node Credentials Primed</p>
                 </div>
-                <div className="bg-slate-900 p-8 rounded-[36px] text-left space-y-6 shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-5"><svg width="100" height="100" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"/></svg></div>
-                  <div className="relative z-10">
-                    <label className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Authorized Email</label>
+                <div className="bg-slate-900 p-10 rounded-[44px] text-left space-y-8 shadow-3xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-10 opacity-10"><svg width="120" height="120" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"/></svg></div>
+                  <div className="relative z-10 space-y-2">
+                    <label className="text-[10px] font-black text-blue-500 uppercase tracking-[0.5em]">Node Login ID</label>
                     <p className="text-sm font-bold text-white tracking-tight">{lastCreatedDealer.email}</p>
                   </div>
-                  <div className="relative z-10">
-                    <label className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Temporary Key</label>
-                    <div className="flex items-center justify-between mt-1">
-                      <p className="text-2xl font-black text-white italic tracking-tight">{lastCreatedDealer.password}</p>
-                      <button 
-                        onClick={() => { navigator.clipboard.writeText(lastCreatedDealer.password); alert("Password copied to clipboard."); }}
-                        className="p-2 bg-white/10 rounded-lg text-blue-400 hover:bg-white/20 transition-colors"
-                      >
-                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+                  <div className="relative z-10 space-y-2">
+                    <label className="text-[10px] font-black text-blue-500 uppercase tracking-[0.5em]">Temporary Access Key</label>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-3xl font-black text-white italic tracking-tighter">{lastCreatedDealer.password}</p>
+                      <button onClick={() => { navigator.clipboard.writeText(lastCreatedDealer.password); alert("Key copied to clipboard."); }} className="p-3 bg-white/10 rounded-2xl text-blue-400 hover:bg-white/20 transition-all active:scale-90">
+                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
                       </button>
                     </div>
                   </div>
                 </div>
-                <button 
-                  onClick={() => { setShowAddDealerModal(false); setLastCreatedDealer(null); }} 
-                  className="w-full bg-blue-600 text-white font-black py-5 rounded-[24px] uppercase text-xs tracking-widest shadow-xl active:scale-95 transition-transform"
-                >
-                  Confirm & Access Network
+                <button onClick={() => { setShowAddDealerModal(false); setLastCreatedDealer(null); }} className="w-full bg-blue-600 text-white font-black py-7 rounded-[32px] uppercase text-xs tracking-[0.4em] shadow-2xl active:scale-95 transition-all">
+                  Return to Network
                 </button>
               </div>
             )}
@@ -573,42 +527,43 @@ const App: React.FC = () => {
   );
 
   const renderDealerDashboard = () => (
-    <div className="p-6 space-y-8 pb-32">
+    <div className="p-8 space-y-10 pb-32">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-black text-slate-900 italic tracking-tighter">Showroom Terminal</h2>
-        <div className="px-4 py-1.5 bg-green-50 text-green-600 text-[10px] font-black rounded-full border border-green-100 uppercase tracking-widest">Authorized</div>
+        <h2 className="text-4xl font-black text-slate-900 italic tracking-tighter uppercase leading-none">Showroom Hub</h2>
+        <div className="px-6 py-2 bg-green-50 text-green-600 text-[10px] font-black rounded-full border border-green-200 uppercase tracking-[0.3em]">Authorized</div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-slate-900 p-8 rounded-[36px] text-white shadow-2xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-blue-600/5 group-hover:bg-blue-600/10 transition-colors"></div>
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Local Fleet</p>
-          <p className="text-4xl font-black mt-2 italic">{cars.length}</p>
+      <div className="grid grid-cols-2 gap-5">
+        <div className="bg-slate-900 p-10 rounded-[48px] text-white shadow-2xl relative overflow-hidden group">
+          <div className="absolute inset-0 bg-blue-600/10 group-hover:bg-blue-600/20 transition-colors"></div>
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none">Managed Assets</p>
+          <p className="text-5xl font-black mt-4 italic tracking-tighter">{cars.length}</p>
         </div>
-        <div className="bg-blue-600 p-8 rounded-[36px] text-white shadow-2xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-white/5 group-hover:bg-white/10 transition-colors"></div>
-          <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest">Inquiries</p>
-          <p className="text-4xl font-black mt-2 italic">{bookings.length}</p>
+        <div className="bg-blue-600 p-10 rounded-[48px] text-white shadow-2xl relative overflow-hidden group">
+          <div className="absolute inset-0 bg-white/10 group-hover:bg-white/20 transition-colors"></div>
+          <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest leading-none">Active Leads</p>
+          <p className="text-5xl font-black mt-4 italic tracking-tighter">{bookings.length}</p>
         </div>
       </div>
-      <div className="space-y-4 pt-4">
-         <h3 className="font-black text-xl italic text-slate-900 tracking-tighter">Asset Reservation Queue</h3>
+      <div className="space-y-6 pt-6">
+         <h3 className="font-black text-2xl italic text-slate-900 tracking-tighter uppercase">Reservation Pipeline</h3>
          {bookings.length === 0 ? (
-           <div className="bg-slate-50 border-2 border-dashed border-slate-200 p-12 rounded-[40px] text-center">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">System waiting for incoming customer reservations</p>
+           <div className="bg-slate-50 border-3 border-dashed border-slate-200 p-16 rounded-[56px] text-center">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] leading-relaxed">System waiting for incoming customer reservations...</p>
            </div>
          ) : (
            bookings.map(b => (
-             <div key={b.id} className="bg-white border border-slate-100 p-6 rounded-[32px] shadow-lg flex justify-between items-center group active:scale-95 transition-transform">
-                <div className="flex items-center gap-4">
-                   <div className="w-14 h-14 rounded-2xl bg-slate-50 overflow-hidden"><img src={b.cars?.image} className="w-full h-full object-cover" /></div>
-                   <div>
-                     <p className="text-sm font-black text-slate-900 leading-tight">{b.cars?.name}</p>
-                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Status: {b.status}</p>
+             <div key={b.id} className="bg-white border border-slate-100 p-8 rounded-[40px] shadow-xl flex justify-between items-center group active:scale-95 transition-all">
+                <div className="flex items-center gap-6">
+                   <div className="w-16 h-16 rounded-[20px] bg-slate-50 overflow-hidden shadow-inner"><img src={b.cars?.image} className="w-full h-full object-cover" /></div>
+                   <div className="space-y-1">
+                     <p className="text-lg font-black text-slate-900 italic leading-none">{b.cars?.name}</p>
+                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Ref: {b.id.slice(0,12)}</p>
                    </div>
                 </div>
-                <button className="bg-slate-50 p-3 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m9 18 6-6-6-6"/></svg>
-                </button>
+                <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-full border border-slate-100">
+                   <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+                   <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">{b.status}</span>
+                </div>
              </div>
            ))
          )}
@@ -619,23 +574,19 @@ const App: React.FC = () => {
   const renderContent = () => {
     if (showPasswordChange) {
       return (
-        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-          <div className="w-full max-w-sm bg-white p-8 rounded-[40px] shadow-2xl space-y-6 animate-slide-up">
-            <div className="text-center">
-              <h2 className="text-2xl font-black italic text-slate-900 leading-tight">Security Requirement</h2>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">First login password reset required</p>
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 animate-in fade-in duration-700">
+          <div className="w-full max-w-sm bg-white p-10 rounded-[56px] shadow-3xl space-y-10 animate-slide-up">
+            <div className="text-center space-y-3">
+              <h2 className="text-3xl font-black italic text-slate-900 uppercase tracking-tighter leading-tight">Security Check</h2>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em] leading-relaxed">First login personal key update required</p>
             </div>
-            <form onSubmit={handlePasswordUpdate} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Set Personal Key</label>
-                <input 
-                  type="password" required placeholder="New Password" value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none" 
-                />
+            <form onSubmit={handlePasswordUpdate} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-5 tracking-widest">Permanent Node Key</label>
+                <input type="password" required placeholder="New Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-3xl px-8 py-5 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
               </div>
-              <button type="submit" disabled={isAuthLoading} className="w-full bg-blue-600 text-white font-black py-5 rounded-[24px] uppercase tracking-widest text-xs shadow-xl active:scale-95 transition-all">
-                {isAuthLoading ? 'Securing Node...' : 'Update & Access Dashboard'}
+              <button type="submit" disabled={isAuthLoading} className="w-full bg-blue-600 text-white font-black py-7 rounded-[32px] uppercase tracking-[0.3em] text-xs shadow-2xl active:scale-95 transition-all">
+                {isAuthLoading ? 'Securing Node...' : 'Establish Secure Connection'}
               </button>
             </form>
           </div>
@@ -648,23 +599,25 @@ const App: React.FC = () => {
     switch (activeTab) {
       case 'home': return renderHome();
       case 'bookings': return (
-        <div className="p-6 space-y-8">
-           <h2 className="text-3xl font-black italic tracking-tighter">Fleet Asset Logs</h2>
+        <div className="p-8 space-y-10">
+           <h2 className="text-4xl font-black italic tracking-tighter uppercase text-slate-900">My Asset Vault</h2>
            {bookings.length === 0 ? (
-             <div className="py-24 text-center space-y-4 opacity-30">
-                <div className="w-16 h-16 bg-slate-200 rounded-3xl flex items-center justify-center mx-auto"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
-                <p className="font-black text-xs uppercase tracking-widest">No Active Asset Records</p>
+             <div className="py-32 text-center opacity-30 space-y-4">
+                <div className="w-20 h-20 bg-slate-100 rounded-[32px] flex items-center justify-center mx-auto text-slate-300">
+                   <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <p className="font-black text-xs uppercase tracking-[0.5em]">No Asset Records Found</p>
              </div>
            ) : (
              bookings.map(b => (
-               <div key={b.id} className="bg-white border border-slate-100 p-8 rounded-[44px] shadow-xl flex gap-8 items-center group active:scale-95 transition-all">
-                  <div className="w-24 h-24 bg-slate-50 rounded-[28px] overflow-hidden shadow-inner flex-shrink-0"><img src={b.cars?.image} className="w-full h-full object-cover" /></div>
-                  <div className="min-w-0">
-                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mb-2">ID: {b.id.slice(0,10)}</p>
-                    <h4 className="text-xl font-black italic text-slate-900 truncate">{b.cars?.name}</h4>
-                    <div className="mt-3 inline-flex items-center gap-2 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
-                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                       <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{b.status}</span>
+               <div key={b.id} className="bg-white border border-slate-100 p-10 rounded-[56px] shadow-2xl flex gap-8 items-center group active:scale-95 transition-all">
+                  <div className="w-28 h-28 bg-slate-50 rounded-[36px] overflow-hidden shadow-inner flex-shrink-0 group-hover:rotate-3 transition-transform"><img src={b.cars?.image} className="w-full h-full object-cover" /></div>
+                  <div className="min-w-0 space-y-3">
+                    <p className="text-[9px] font-black text-blue-600 uppercase tracking-[0.4em] leading-none">Index: {b.id.slice(0,10)}</p>
+                    <h4 className="text-2xl font-black italic text-slate-900 truncate leading-none">{b.cars?.name}</h4>
+                    <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full border border-blue-100">
+                       <div className="w-2 h-2 bg-blue-600 rounded-full shadow-[0_0_8px_rgba(37,99,235,1)]"></div>
+                       <span className="text-[9px] font-black uppercase tracking-widest">{b.status}</span>
                     </div>
                   </div>
                </div>
@@ -675,34 +628,34 @@ const App: React.FC = () => {
       case 'admin-stats': return renderAdminStats();
       case 'admin-dealers': return renderAdminDealers();
       case 'admin-cms': return (
-        <div className="p-6 space-y-6">
-           <h2 className="text-3xl font-black italic tracking-tighter">Fleet Master Control</h2>
-           <div className="bg-slate-50 border-2 border-dashed border-slate-200 p-12 rounded-[40px] text-center flex flex-col items-center">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] leading-relaxed">Management terminal for fleet assets and system parameters</p>
-              <button className="mt-6 bg-slate-900 text-white px-10 py-4 rounded-[20px] text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all">Update Node Assets</button>
+        <div className="p-8 space-y-8">
+           <h2 className="text-4xl font-black italic tracking-tighter uppercase text-slate-900">Asset Control</h2>
+           <div className="bg-slate-50 border-3 border-dashed border-slate-200 p-20 rounded-[56px] text-center flex flex-col items-center space-y-6">
+              <div className="w-20 h-20 bg-slate-100 rounded-[32px] flex items-center justify-center text-slate-300">
+                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] leading-relaxed max-w-[200px]">Management terminal for node infrastructure and asset parameters</p>
+              <button className="bg-slate-900 text-white px-12 py-5 rounded-[24px] text-[10px] font-black uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all">Update Node Assets</button>
            </div>
         </div>
       );
       case 'dealer-dashboard': return renderDealerDashboard();
       case 'profile': return (
-        <div className="p-10 space-y-12 text-center animate-slide-up">
+        <div className="p-12 space-y-12 text-center animate-slide-up">
           <div className="flex flex-col items-center">
-            <div className="w-32 h-32 bg-slate-900 rounded-[40px] flex items-center justify-center text-white shadow-2xl border-4 border-blue-600/20 rotate-3 group hover:rotate-0 transition-transform">
-               <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <div className="w-40 h-40 bg-slate-900 rounded-[56px] flex items-center justify-center text-white shadow-3xl border-4 border-blue-600/20 rotate-6 group hover:rotate-0 transition-transform duration-700">
+               <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
-            <h3 className="text-4xl font-black text-slate-900 italic mt-8 tracking-tighter leading-none">{currentUser.name}</h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-4">{currentUser.email}</p>
-            <div className="mt-8 inline-flex items-center gap-3 bg-blue-50 text-blue-600 px-6 py-3 rounded-full border border-blue-100 shadow-sm">
-               <div className="w-2 h-2 bg-blue-600 rounded-full shadow-[0_0_8px_rgba(37,99,235,1)]"></div>
-               <span className="text-[9px] font-black uppercase tracking-widest">{currentUser.role} PRIVILEGED NODE</span>
+            <h3 className="text-4xl font-black text-slate-900 italic mt-10 tracking-tighter leading-none">{currentUser.name}</h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] mt-6 leading-none">{currentUser.email}</p>
+            <div className="mt-10 inline-flex items-center gap-4 bg-blue-50 text-blue-600 px-8 py-4 rounded-full border border-blue-100 shadow-xl shadow-blue-600/10">
+               <div className="w-3 h-3 bg-blue-600 rounded-full shadow-[0_0_12px_rgba(37,99,235,1)]"></div>
+               <span className="text-[10px] font-black uppercase tracking-[0.2em]">{currentUser.role} PRIVILEGED ACCESS</span>
             </div>
           </div>
-          <div className="pt-8">
-            <button 
-              onClick={handleLogout} 
-              className="w-full text-red-600 font-black text-[11px] uppercase tracking-[0.5em] py-8 border-2 border-dashed border-red-100 rounded-[44px] hover:bg-red-50 hover:border-red-200 transition-all active:scale-95"
-            >
-              TERMINATE SECURE SESSION
+          <div className="pt-12">
+            <button onClick={handleLogout} className="w-full text-red-600 font-black text-[12px] uppercase tracking-[0.6em] py-10 border-3 border-dashed border-red-100 rounded-[56px] hover:bg-red-50 hover:border-red-200 transition-all active:scale-95 leading-none">
+              Terminate Session
             </button>
           </div>
         </div>
@@ -714,54 +667,46 @@ const App: React.FC = () => {
   if (showSplash) return <SplashScreen />;
 
   return (
-    <Layout 
-      activeTab={activeTab} 
-      setActiveTab={setActiveTab} 
-      role={currentUser?.role || UserRole.USER} 
-      onLogout={handleLogout}
-    >
+    <Layout activeTab={activeTab} setActiveTab={setActiveTab} role={currentUser?.role || UserRole.USER} onLogout={handleLogout}>
       {selectedCarId ? (
         <div className="bg-white min-h-screen animate-slide-up">
           <div className="relative">
-            <button onClick={() => setSelectedCarId(null)} className="absolute top-8 left-8 z-10 bg-white/90 p-4 rounded-2xl shadow-2xl border border-slate-100 active:scale-90 transition-transform">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="m15 18-6-6 6-6"/></svg>
+            <button onClick={() => setSelectedCarId(null)} className="absolute top-10 left-10 z-50 bg-white/90 p-5 rounded-3xl shadow-2xl border border-slate-100 active:scale-90 transition-transform backdrop-blur-md">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5"><path d="m15 18-6-6 6-6"/></svg>
             </button>
-            <div className="w-full aspect-[4/3] bg-slate-100 shadow-inner">
-               <img src={cars.find(c => c.id === selectedCarId)?.image} className="w-full h-full object-cover" />
+            <div className="w-full aspect-[4/3] bg-slate-100 shadow-inner overflow-hidden">
+               <img src={cars.find(c => c.id === selectedCarId)?.image} className="w-full h-full object-cover scale-110 hover:scale-100 transition-transform duration-[2000ms]" />
             </div>
           </div>
-          <div className="px-10 py-12 -mt-16 bg-white rounded-t-[60px] relative z-10 space-y-10 shadow-2xl pb-40">
+          <div className="px-12 py-16 -mt-20 bg-white rounded-t-[80px] relative z-10 space-y-12 shadow-[0_-32px_64px_-16px_rgba(0,0,0,0.1)] pb-40">
             {(() => {
               const car = cars.find(c => c.id === selectedCarId);
               if (!car) return null;
               return (
                 <>
                   <div className="flex justify-between items-start">
-                    <div>
-                      <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{car.brand}</span>
-                      <h2 className="text-4xl font-black text-slate-900 italic leading-none mt-2 tracking-tighter">{car.name}</h2>
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.4em]">{car.brand} Fleet</span>
+                      <h2 className="text-5xl font-black text-slate-900 italic leading-none tracking-tighter uppercase">{car.name}</h2>
                     </div>
-                    <div className="text-right">
-                      <p className="text-3xl font-black tracking-tighter text-slate-900 italic">₹{(car.price / 100000).toFixed(1)}L</p>
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-1">Ex-Showroom Index</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 p-7 rounded-[32px] border border-slate-100 text-center space-y-2">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Efficiency</p>
-                       <p className="text-sm font-black text-slate-900 uppercase italic">{car.mileage}</p>
-                    </div>
-                    <div className="bg-slate-50 p-7 rounded-[32px] border border-slate-100 text-center space-y-2">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Energy Node</p>
-                       <p className="text-sm font-black text-slate-900 uppercase italic">{car.fuel}</p>
+                    <div className="text-right space-y-1">
+                      <p className="text-4xl font-black tracking-tighter text-slate-900 italic leading-none">₹{(car.price / 100000).toFixed(1)}L</p>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ex-Showroom Price</p>
                     </div>
                   </div>
-                  <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 backdrop-blur-2xl p-8 flex gap-4 z-[100] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] border-t border-slate-100">
-                    <button 
-                      onClick={() => handleBookNow(car.id)} 
-                      className="flex-1 bg-blue-600 text-white font-black py-6 rounded-[28px] shadow-2xl shadow-blue-600/30 text-[11px] uppercase tracking-[0.3em] active:scale-95 transition-all"
-                    >
-                      INITIALIZE ASSET BOOKING
+                  <div className="grid grid-cols-2 gap-5">
+                    <div className="bg-slate-50 p-10 rounded-[44px] border border-slate-100 text-center space-y-3 hover:bg-slate-100 transition-colors">
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Range Index</p>
+                       <p className="text-base font-black text-slate-900 uppercase italic tracking-tighter leading-none">{car.mileage}</p>
+                    </div>
+                    <div className="bg-slate-50 p-10 rounded-[44px] border border-slate-100 text-center space-y-3 hover:bg-slate-100 transition-colors">
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Energy Core</p>
+                       <p className="text-base font-black text-slate-900 uppercase italic tracking-tighter leading-none">{car.fuel}</p>
+                    </div>
+                  </div>
+                  <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/90 backdrop-blur-3xl p-10 flex gap-5 z-[100] shadow-[0_-32px_64px_-16px_rgba(0,0,0,0.15)] border-t border-slate-100 rounded-t-[56px]">
+                    <button onClick={() => handleBookNow(car.id)} className="flex-1 bg-blue-600 text-white font-black py-8 rounded-[36px] shadow-3xl shadow-blue-600/30 text-xs uppercase tracking-[0.4em] active:scale-95 transition-all">
+                      Initialize Booking
                     </button>
                   </div>
                 </>
