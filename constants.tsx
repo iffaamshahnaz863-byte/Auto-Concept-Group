@@ -24,7 +24,9 @@ export const MOCK_CARS: Car[] = [
     seats: 5,
     safetyRating: '5 Star',
     location: 'Mumbai',
-    dealerId: 'dealer-1'
+    // Fix: Corrected property name to dealer_id and added required status field
+    dealer_id: 'dealer-1',
+    status: 'available'
   },
   {
     id: '2',
@@ -45,7 +47,9 @@ export const MOCK_CARS: Car[] = [
     seats: 7,
     safetyRating: '5 Star',
     location: 'Delhi',
-    dealerId: 'dealer-1'
+    // Fix: Corrected property name to dealer_id and added required status field
+    dealer_id: 'dealer-1',
+    status: 'available'
   },
   {
     id: '3',
@@ -67,7 +71,9 @@ export const MOCK_CARS: Car[] = [
     km: 24000,
     owner: 1,
     location: 'Bangalore',
-    dealerId: 'dealer-2'
+    // Fix: Corrected property name to dealer_id and added required status field
+    dealer_id: 'dealer-2',
+    status: 'available'
   },
   {
     id: '4',
@@ -86,7 +92,9 @@ export const MOCK_CARS: Car[] = [
     seats: 5,
     safetyRating: '5 Star',
     location: 'Hyderabad',
-    dealerId: 'dealer-2'
+    // Fix: Corrected property name to dealer_id and added required status field
+    dealer_id: 'dealer-2',
+    status: 'available'
   }
 ];
 

@@ -52,18 +52,20 @@ export interface Car {
   km?: number;
   owner?: number;
   location: string;
-  dealerId?: string;
+  dealer_id?: string;
+  status: 'available' | 'sold' | 'pending';
 }
 
 export interface Booking {
   id: string;
-  carId: string;
-  userId: string;
-  dealerId: string;
-  status: BookingStatus;
-  bookingDate: string;
-  tokenPaid: number;
-  isTestDrive?: boolean;
+  car_id: string;
+  user_id: string;
+  dealer_id: string;
+  status: BookingStatus | string;
+  booking_date: string;
+  token_paid: number;
+  cars?: Car;
+  users?: UserProfile;
 }
 
 export interface UserProfile {
@@ -72,11 +74,9 @@ export interface UserProfile {
   email: string;
   phone: string;
   role: UserRole;
-  isApprovedDealer?: boolean;
-  showroomName?: string;
-  documents?: {
-    aadhaar?: string;
-    pan?: string;
-    license?: string;
-  };
+  is_approved?: boolean;
+  needs_password_change?: boolean;
+  showroom_name?: string;
+  owner_name?: string;
+  status?: string;
 }

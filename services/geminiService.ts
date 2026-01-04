@@ -1,7 +1,8 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Fix: Initializing GoogleGenAI exclusively with process.env.API_KEY as per guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const getCarRecommendation = async (userPreference: string) => {
   try {
@@ -22,7 +23,9 @@ export const getCarRecommendation = async (userPreference: string) => {
         }
       }
     });
-    return JSON.parse(response.text);
+    // Fix: Accessing .text property directly and handling potential undefined value
+    const jsonStr = response.text?.trim();
+    return jsonStr ? JSON.parse(jsonStr) : null;
   } catch (error) {
     console.error("AI Recommendation Error:", error);
     return null;
